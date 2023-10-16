@@ -61,7 +61,7 @@ int main(int argc, char *argv[])
 
     while (TRUE)
     {
-        rc = modbus_read_registers(ctx, 0x0004, 1, tab_rp_bits);
+        rc = modbus_read_input_registers(ctx, 0x0004, 1, tab_rp_bits);
 
         if (rc == -1)
         {
