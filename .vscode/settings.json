@@ -1,0 +1,14 @@
+{
+    "files.associations": {
+        "stdbool.h": "c",
+        "modbus-version.h": "c",
+        "light-modbus-rtu.h": "c",
+        "light-modbus.h": "c",
+        "string.h": "c",
+        "emi-read.h": "c",
+        "mqttclient.h": "c",
+        "timesize.h": "c",
+        "math.h": "c"
+    },
+    "C_Cpp.clang_format_fallbackStyle": "Webkit"
+}
