@@ -17,7 +17,7 @@ We adapted The original modbus library and created a lightweight version of it. 
 1. Code cleanup.
 1. Add support for write (so that EMI address can be changed. Might be useful for residential buildings).
 1. Allow further customisation via args:
-    1. Serial devicec file name
+    1. Serial device file name
     1. Interval for instant values polling
     1. Values to poll
     0. We may consider going next level with a yaml config file instead.
