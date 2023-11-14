@@ -1,6 +1,6 @@
 # EMI-Modbus
 
-We adapted The original modbus library and created a lightweight version of it. Ours is also more flexible, but only offers support for the RTU configuration, and onnnly for the `modbus_read_input_registers` call.
+We adapted the original modbus library and created a lightweight version of it. Ours is also more flexible, but only offers support for the RTU configuration, and only for the `modbus_read_input_registers` call.
 
 # How to run
 
