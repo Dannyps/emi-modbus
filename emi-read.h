@@ -14,9 +14,13 @@ typedef struct __attribute__ ((__packed__)) {
 } emi_clock_t;
 
 char* getOctetString(modbus_t* ctx, uint16_t registerAddress, uint8_t nb);
-double getDoubleFromUInt16(modbus_t* ctx, uint16_t registerAddress, signed char scaller);
-double getDoubleFromUInt32(modbus_t* ctx, uint16_t registerAddress, signed char scaler);
+int getDoubleFromUInt16(modbus_t* ctx, uint16_t registerAddress, signed char scaller, double* res);
+int getDoubleFromUInt32(modbus_t* ctx, uint16_t registerAddress, signed char scaler, double* res);
+char admissibleNewValue(double oldValue, double newValue, float admissibleVariance);
 emi_clock_t* getTime(modbus_t* ctx);
-int _MQTTClient_publish(MQTTClient handle, const char* topicName, const void* payload, int payloadlen);
 int _MQTTClient_publishInt(MQTTClient handle, const char* topicName, int n);
 int _MQTTClient_publishDouble(MQTTClient handle, const char* topicName, double n, uint8_t decimals);
+int _MQTTClient_publishString(MQTTClient handle, const char* topicName, char* str);
+void runContinuously();
+void runHourly();
+unsigned char getCurrentHour();

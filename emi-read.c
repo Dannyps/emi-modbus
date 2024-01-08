@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "MQTTClient.h"
@@ -11,12 +12,16 @@
 
 #define SERVER_ID 0x01
 
+double instVoltageL1, instCurrentL1, instActivePower, activeEnergyImport;
+double instFrequency, instPowerFactor, currentApparentPowerThreshold;
+double rate1ActiveEnergy, rate2ActiveEnergy, rate3ActiveEnergy, totalRateActiveEnergy;
+modbus_t* ctx = NULL;
+int rc, mqttrc;
+MQTTClient client;
+emi_clock_t* emiClock;
+
 int main(int argc, char* argv[])
 {
-    modbus_t* ctx = NULL;
-    int rc, mqttrc;
-    int server_id = SERVER_ID;
-
     // UPDATE THE DEVICE NAME AS NECESSARY
     ctx = modbus_new_rtu("/dev/ttyUSB0", 9600, 'N', 8, 2);
     if (ctx == NULL) {
@@ -24,14 +29,13 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    rc = modbus_set_slave(ctx, server_id);
+    rc = modbus_set_slave(ctx, SERVER_ID);
     if (rc == -1) {
-        fprintf(stderr, "server_id=%d Invalid slave ID: %s\n", server_id, modbus_strerror(errno));
+        fprintf(stderr, "server_id=%d Invalid slave ID: %s\n", SERVER_ID, modbus_strerror(errno));
         modbus_free(ctx);
         return -1;
     }
 
-    MQTTClient client;
     mqttrc = MQTTClient_create(&client, argv[1], "emi-reader", MQTTCLIENT_PERSISTENCE_NONE, NULL);
     if (mqttrc != 0) {
         fprintf(stderr, "invalid mqtt server name or not provided\n");
@@ -59,46 +63,85 @@ int main(int argc, char* argv[])
         return -1;
     }
 
+    // fire runHourly just once before entering the loop.
+    runHourly();
+    unsigned char hourlyLastRanAt = getCurrentHour();
+
+    while (TRUE) {
+        runContinuously();
+
+        if (getCurrentHour() != hourlyLastRanAt) {
+            runHourly();
+            hourlyLastRanAt = getCurrentHour();
+        }
+
+        usleep(200 * 1000);
+    }
+
+    /* Close the connection */
+    modbus_close(ctx);
+    modbus_free(ctx);
+
+    return 0;
+}
+
+void runContinuously()
+{
+    int localRc = 0;
+    localRc += getDoubleFromUInt16(ctx, 0x006c, -1, &instVoltageL1);
+    localRc += getDoubleFromUInt16(ctx, 0x006d, -1, &instCurrentL1);
+    localRc += getDoubleFromUInt32(ctx, 0x0079, 0, &instActivePower);
+    localRc += getDoubleFromUInt32(ctx, 0x0016, 0, &activeEnergyImport);
+    localRc += getDoubleFromUInt16(ctx, 0x007F, -1, &instFrequency);
+    localRc += getDoubleFromUInt16(ctx, 0x007B, -3, &instPowerFactor);
+    localRc += getDoubleFromUInt32(ctx, 0x0026, 0, &rate1ActiveEnergy);
+    localRc += getDoubleFromUInt32(ctx, 0x0027, 0, &rate2ActiveEnergy);
+    localRc += getDoubleFromUInt32(ctx, 0x0028, 0, &rate3ActiveEnergy);
+    localRc += getDoubleFromUInt32(ctx, 0x002C, 0, &totalRateActiveEnergy);
+
+    if (localRc != 10) {
+        // we should re-read;
+        printf("read bad values\n");
+        return;
+    }
+
+    mqttrc = _MQTTClient_publishDouble(client, "emi/L1/voltage", instVoltageL1, 1);
+    mqttrc = _MQTTClient_publishDouble(client, "emi/L1/activeEnergyImport", activeEnergyImport, 0);
+    mqttrc = _MQTTClient_publishDouble(client, "emi/L1/current", instCurrentL1, 1);
+    mqttrc = _MQTTClient_publishDouble(client, "emi/L1/activePower", instActivePower, 0);
+    mqttrc = _MQTTClient_publishDouble(client, "emi/L1/frequency", instFrequency, 1);
+    mqttrc = _MQTTClient_publishDouble(client, "emi/L1/powerFactor", instPowerFactor, 3);
+    mqttrc = _MQTTClient_publishDouble(client, "emi/tariff/rate1ActiveEnergy", rate1ActiveEnergy, 0);
+    mqttrc = _MQTTClient_publishDouble(client, "emi/tariff/rate2ActiveEnergy", rate2ActiveEnergy, 0);
+    mqttrc = _MQTTClient_publishDouble(client, "emi/tariff/rate3ActiveEnergy", rate3ActiveEnergy, 0);
+    mqttrc = _MQTTClient_publishDouble(client, "emi/tariff/totalRateActiveEnergy", totalRateActiveEnergy, 0);
+
+    emiClock = getTime(ctx);
+    char clockTime[64];
+    sprintf(clockTime, "%02d-%02d-%02dT%02d:%02d:%02dZ\n", emiClock->year, emiClock->month, emiClock->day, emiClock->hour, emiClock->minute, emiClock->second);
+    mqttrc = _MQTTClient_publishString(client, "emi/clockTime", clockTime);
+    free(emiClock);
+}
+
+void runHourly()
+{
+    int localRc = 0;
+
+    double currentlyActiveTariff;
+    localRc += getDoubleFromUInt16(ctx, 0x000b, 0, &currentlyActiveTariff);
+    char* activityCalendarActiveName = getOctetString(ctx, 0x0006, 6);
     char* deviceId2 = getOctetString(ctx, 0x0003, 6);
     char* deviceId1 = getOctetString(ctx, 0x0002, 10);
     char* activeCoreFirmwareId = getOctetString(ctx, 0x0004, 5);
     char* activeAppFirmwareId = getOctetString(ctx, 0x0005, 5);
     char* activeComFirmwareId = getOctetString(ctx, 0x0006, 5);
 
-    printf("Device ID 1 - Device Serial Number is %s.\n", deviceId1);
-    // printf("Device ID 2 - Manufacturer Model Codes and Year is %s.\n", deviceId2);
-    printf("EMI Active Core Firmware Id is %s.\n", activeCoreFirmwareId);
-    printf("EMI Active App Firmware Id is %s.\n", activeAppFirmwareId);
-    printf("EMI Active Com Firmware Id is %s.\n", activeComFirmwareId);
+    localRc += getDoubleFromUInt32(ctx, 0x0012, -3, &currentApparentPowerThreshold);
 
-    emi_clock_t* clock = getTime(ctx);
-    printf("EMI clock time is %2d/%2d/%2d - %2d:%2d:%2d\n", clock->day, clock->month, clock->year, clock->hour, clock->minute, clock->second);
-
-    mqttrc = _MQTTClient_publish(client, "emi/serialNumber", deviceId1, 10);
-
-    char* activityCalendarActiveName = getOctetString(ctx, 0x0006, 6);
-    printf("Activity Calendar - Active Name is %s\n", activityCalendarActiveName);
-
-    double currentlyActiveTariff = getDoubleFromUInt16(ctx, 0x000b, 0);
-    printf("Currently Active Tariff is %f\n", currentlyActiveTariff);
-
-    while (TRUE) {
-        double instVoltageL1 = getDoubleFromUInt16(ctx, 0x006c, -1);
-        double instCurrentL1 = getDoubleFromUInt16(ctx, 0x006d, -1);
-        double instActivePowerSum = getDoubleFromUInt32(ctx, 0x0079, 0);
-
-        mqttrc = _MQTTClient_publishDouble(client, "emi/L1/voltage", instVoltageL1, 1);
-        mqttrc = _MQTTClient_publishDouble(client, "emi/L1/current", instCurrentL1, 1);
-        mqttrc = _MQTTClient_publishDouble(client, "emi/L1/activePower", instActivePowerSum, 0);
-
-        printf("Wrote 3 messages to mqtt.\n");
-
-        usleep(200000);
-    }
-
-    /* Close the connection */
-    modbus_close(ctx);
-    modbus_free(ctx);
+    mqttrc = _MQTTClient_publishDouble(client, "emi/tariff/currentApparentPowerThreshold", currentApparentPowerThreshold, 2);
+    mqttrc = _MQTTClient_publishDouble(client, "emi/currentlyActiveTariff", currentlyActiveTariff, 1);
+    mqttrc = _MQTTClient_publishString(client, "emi/activityCalendarActiveName", activityCalendarActiveName);
+    mqttrc = _MQTTClient_publishString(client, "emi/serialNumber", deviceId1);
 
     free(deviceId1);
     free(deviceId2);
@@ -106,16 +149,18 @@ int main(int argc, char* argv[])
     free(activeAppFirmwareId);
     free(activeComFirmwareId);
     free(activityCalendarActiveName);
-    free(clock);
-
-    return 0;
 }
 
 char* getOctetString(modbus_t* ctx, uint16_t registerAddress, uint8_t nb)
 {
     char* string = malloc(nb + 1 * sizeof(char));
     string[nb] = 0; // set string terminator
-    modbus_read_input_registers(ctx, registerAddress, 1, nb, string);
+    int rc = modbus_read_input_registers(ctx, registerAddress, 1, nb, string);
+
+    if (rc != 1) {
+        string[0] = '\0';
+    }
+
     return string;
 }
 
@@ -129,32 +174,31 @@ double scaleInt(int num, int scaler)
     }
 }
 
-double getDoubleFromUInt16(modbus_t* ctx, uint16_t registerAddress, signed char scaler)
+int getDoubleFromUInt16(modbus_t* ctx, uint16_t registerAddress, signed char scaler, double* res)
 {
-    uint16_t res;
-    modbus_read_input_registers(ctx, registerAddress, 1, 2, &res);
-    return scaleInt(__bswap_16(res), scaler);
+    uint16_t buffer;
+    int rc = modbus_read_input_registers(ctx, registerAddress, 1, 2, &buffer);
+    *res = scaleInt(__bswap_16(buffer), scaler);
+    return rc;
 }
 
-double getDoubleFromUInt32(modbus_t* ctx, uint16_t registerAddress, signed char scaler)
+int getDoubleFromUInt32(modbus_t* ctx, uint16_t registerAddress, signed char scaler, double* res)
 {
-    uint32_t res;
-    modbus_read_input_registers(ctx, registerAddress, 1, 4, &res);
-    return scaleInt(__bswap_32(res), scaler);
+    uint32_t buffer;
+    int rc = modbus_read_input_registers(ctx, registerAddress, 1, 4, &buffer);
+    *res = scaleInt(__bswap_32(buffer), scaler);
+    return rc;
 }
 
 emi_clock_t* getTime(modbus_t* ctx)
 {
-    emi_clock_t* clock = malloc(1 * sizeof(emi_clock_t));
-    modbus_read_input_registers(ctx, 0x0001, 1, sizeof(emi_clock_t), clock);
-    clock->year = __bswap_16(clock->year);
-    clock->deviation = __bswap_16(clock->deviation);
-    return clock;
-}
-
-int _MQTTClient_publish(MQTTClient handle, const char* topicName, const void* payload, int payloadlen)
-{
-    return MQTTClient_publish(handle, topicName, payloadlen, payload, 1, 0, NULL);
+    emi_clock_t* emiClock = malloc(1 * sizeof(emi_clock_t));
+    int rc = modbus_read_input_registers(ctx, 0x0001, 1, sizeof(emi_clock_t), emiClock);
+    if (rc != 0) {
+    }
+    emiClock->year = __bswap_16(emiClock->year);
+    emiClock->deviation = __bswap_16(emiClock->deviation);
+    return emiClock;
 }
 
 int _MQTTClient_publishInt(MQTTClient handle, const char* topicName, int n)
@@ -173,4 +217,38 @@ int _MQTTClient_publishDouble(MQTTClient handle, const char* topicName, double n
     int rc = MQTTClient_publish(handle, topicName, strlen(str), str, 1, 0, NULL);
     free(str);
     return rc;
+}
+
+int _MQTTClient_publishString(MQTTClient handle, const char* topicName, char* str)
+{
+    return MQTTClient_publish(handle, topicName, strlen(str), str, 1, 0, NULL);
+}
+
+char admissibleNewValue(double oldValue, double newValue, float admissibleVariance)
+{
+    double biggest, smallest;
+    if (oldValue > newValue) {
+        biggest = oldValue;
+        smallest = newValue;
+    } else {
+        biggest = newValue;
+        smallest = oldValue;
+    }
+
+    double diff = biggest - smallest;
+
+    if ((fabs(diff / oldValue) * 100) > admissibleVariance) {
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+unsigned char getCurrentHour()
+{
+    time_t rawtime;
+    struct tm* timeinfo;
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+    return timeinfo->tm_hour;
 }

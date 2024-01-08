@@ -8,7 +8,12 @@
         "emi-read.h": "c",
         "mqttclient.h": "c",
         "timesize.h": "c",
-        "math.h": "c"
+        "math.h": "c",
+        "limits": "c",
+        "*.tcc": "c",
+        "type_traits": "c",
+        "stdlib.h": "c",
+        "errno.h": "c"
     },
     "C_Cpp.clang_format_fallbackStyle": "Webkit"
 }
