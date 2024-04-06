@@ -9,6 +9,7 @@
 
 #include "MQTTClient.h"
 #include "emi-read.h"
+#include <systemd/sd-daemon.h>
 
 #define SERVER_ID 0x01
 
@@ -47,7 +48,14 @@ int main(int argc, char* argv[])
     conn_opts.cleansession = 1;
     conn_opts.username = argv[2];
     conn_opts.password = argv[3];
-    mqttrc = MQTTClient_connect(client, &conn_opts);
+
+    do {
+
+        mqttrc = MQTTClient_connect(client, &conn_opts);
+        printf("mqtt connect returned %i, %s\n", mqttrc, MQTTClient_strerror(mqttrc));
+        if (mqttrc != MQTTCLIENT_SUCCESS)
+            sleep(10);
+    } while (mqttrc != MQTTCLIENT_SUCCESS);
 
     modbus_set_debug(ctx, FALSE);
 
@@ -62,6 +70,8 @@ int main(int argc, char* argv[])
         modbus_free(ctx);
         return -1;
     }
+
+    sd_notify(FALSE, "READY=1");
 
     // fire runHourly just once before entering the loop.
     runHourly();

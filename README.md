@@ -9,6 +9,9 @@ We adapted the original modbus library and created a lightweight version of it. 
     1. `git clone git@github.com:eclipse/paho.mqtt.c.git`
     2. `cd paho.mqtt.c`
     3. `make install`
+    
+1. Install [https://man7.org/linux/man-pages/man3/libsystemd.3.html](libsystemd-dev):
+    1. `sudo apt install libsystemd-dev`
 1. Build the software: `make`
 1. Run it: `build/emi-read mqtt://<mqtt-host> <mqtt-user> <mqtt-pwd>`
 
