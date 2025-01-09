@@ -540,8 +540,6 @@ read_registers(modbus_t* ctx, int function, int addr, int nb, u_int8_t size, voi
         uint8_t paddedSize = (size % 2 == 1) ? size + 1 : size;
 
         for (i = 0; i < rc; i++) {
-            /* shift reg hi_byte to temp OR with lo_byte */
-            //((uint8_t*)dest)[i] = (rsp[offset + 2 + (i << 1)] << 8) | rsp[offset + 3 + (i << 1)];
             memcpy(dest + i, rsp + offset + 2 + i * paddedSize, size);
         }
     }
