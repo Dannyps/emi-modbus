@@ -1,4 +1,4 @@
-CFLAGS = -O2 -Wall
+CFLAGS = -O2 -Wall -Wpedantic
 
 main.o: build emi-read.c build/light-modbus.o build/light-modbus-rtu.o 
 	$(CC) $(CFLAGS) emi-read.c build/light-modbus.o build/light-modbus-rtu.o -lpaho-mqtt3c -lsystemd -lm -o build/emi-read
