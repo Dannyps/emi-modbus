@@ -14,5 +14,14 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Clone paho.mqtt.c
+      run: git clone git@github.com:eclipse/paho.mqtt.c.git
+
+    - name: Make paho.mqtt.c
+      run: cd paho.mqtt.c && make
+
+    - name: Install dependencies
+      run: sudo apt-get install -y libsystemd-dev make build-essential
+      
     - name: Build
       run: make
