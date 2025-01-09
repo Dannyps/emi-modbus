@@ -18,7 +18,7 @@ jobs:
       run: git clone https://github.com/eclipse-paho/paho.mqtt.c.git
 
     - name: Make paho.mqtt.c
-      run: cd paho.mqtt.c && make install -j8
+      run: cd paho.mqtt.c && sudo make install -j8
 
     - name: Install dependencies
       run: sudo apt-get install -y libsystemd-dev make build-essential
