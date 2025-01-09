@@ -5,7 +5,7 @@ We adapted the original modbus library and created a lightweight version of it. 
 # How to run
 
 1. Make sure you have git, make and gcc.
-1. Install [(paho.mqtt.c](https://github.com/eclipse/paho.mqtt.c):
+1. Install [paho.mqtt.c](https://github.com/eclipse/paho.mqtt.c):
     1. `git clone git@github.com:eclipse/paho.mqtt.c.git`
     2. `cd paho.mqtt.c`
     3. `make install`
