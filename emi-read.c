@@ -16,56 +16,48 @@
 double instVoltageL1, instCurrentL1, instActivePower, activeEnergyImport;
 double instFrequency, instPowerFactor, currentApparentPowerThreshold;
 double rate1ActiveEnergy, rate2ActiveEnergy, rate3ActiveEnergy, totalRateActiveEnergy;
-modbus_t* ctx = NULL;
+modbus_t *ctx = NULL;
 int rc, mqttrc;
 MQTTClient client;
-emi_clock_t* emiClock;
+emi_clock_t *emiClock;
 
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
     // UPDATE THE DEVICE NAME AS NECESSARY
     ctx = modbus_new_rtu("/dev/ttyUSB0", 9600, 'N', 8, 2);
-    if (ctx == NULL) {
+    if (ctx == NULL)
+    {
         fprintf(stderr, "Could not connect to MODBUS: %s\n", modbus_strerror(errno));
         return -1;
     }
 
     rc = modbus_set_slave(ctx, SERVER_ID);
-    if (rc == -1) {
+    if (rc == -1)
+    {
         fprintf(stderr, "server_id=%d Invalid slave ID: %s\n", SERVER_ID, modbus_strerror(errno));
         modbus_free(ctx);
         return -1;
     }
 
     mqttrc = MQTTClient_create(&client, argv[1], "emi-reader", MQTTCLIENT_PERSISTENCE_NONE, NULL);
-    if (mqttrc != 0) {
+    if (mqttrc != 0)
+    {
         fprintf(stderr, "invalid mqtt server name or not provided\n");
         return -1;
     }
 
-    MQTTClient_connectOptions conn_opts = MQTTClient_connectOptions_initializer;
-    conn_opts.keepAliveInterval = 10;
-    conn_opts.cleansession = 1;
-    conn_opts.username = argv[2];
-    conn_opts.password = argv[3];
-
-    do {
-
-        mqttrc = MQTTClient_connect(client, &conn_opts);
-        printf("mqtt connect returned %i, %s\n", mqttrc, MQTTClient_strerror(mqttrc));
-        if (mqttrc != MQTTCLIENT_SUCCESS)
-            sleep(10);
-    } while (mqttrc != MQTTCLIENT_SUCCESS);
+    //mqtt_connect(&client, argv);
 
     modbus_set_debug(ctx, FALSE);
 
     modbus_set_error_recovery(ctx, MODBUS_ERROR_RECOVERY_LINK | MODBUS_ERROR_RECOVERY_PROTOCOL);
 
     /* Define a new timeout of 50ms */
-    modbus_set_response_timeout(ctx, 0, 80000);
+    modbus_set_response_timeout(ctx, 0, 200 * 1000);
 
     int con = modbus_connect(ctx);
-    if (con == -1) {
+    if (con == -1)
+    {
         fprintf(stderr, "Connection failed: %s\n", modbus_strerror(errno));
         modbus_free(ctx);
         return -1;
@@ -77,15 +69,18 @@ int main(int argc, char* argv[])
     runHourly();
     unsigned char hourlyLastRanAt = getCurrentHour();
 
-    while (TRUE) {
+    while (TRUE)
+    {
+        mqtt_connect(client, argv);
         runContinuously();
 
-        if (getCurrentHour() != hourlyLastRanAt) {
+        if (getCurrentHour() != hourlyLastRanAt)
+        {
             runHourly();
             hourlyLastRanAt = getCurrentHour();
         }
-
-        usleep(200 * 1000);
+        mqtt_disconnect(client);
+        usleep(5000 * 1000);
     }
 
     /* Close the connection */
@@ -109,9 +104,10 @@ void runContinuously()
     localRc += getDoubleFromUInt32(ctx, 0x0028, 0, &rate3ActiveEnergy);
     localRc += getDoubleFromUInt32(ctx, 0x002C, 0, &totalRateActiveEnergy);
 
-    if (localRc != 10) {
+    if (localRc != 10)
+    {
         // we should re-read;
-        printf("read bad values\n");
+        printf("read bad values. Expected 10, but got only %d successful reads.\n", localRc);
         return;
     }
 
@@ -139,12 +135,12 @@ void runHourly()
 
     double currentlyActiveTariff;
     localRc += getDoubleFromUInt16(ctx, 0x000b, 0, &currentlyActiveTariff);
-    char* activityCalendarActiveName = getOctetString(ctx, 0x0006, 6);
-    char* deviceId2 = getOctetString(ctx, 0x0003, 6);
-    char* deviceId1 = getOctetString(ctx, 0x0002, 10);
-    char* activeCoreFirmwareId = getOctetString(ctx, 0x0004, 5);
-    char* activeAppFirmwareId = getOctetString(ctx, 0x0005, 5);
-    char* activeComFirmwareId = getOctetString(ctx, 0x0006, 5);
+    char *activityCalendarActiveName = getOctetString(ctx, 0x0006, 6);
+    char *deviceId2 = getOctetString(ctx, 0x0003, 6);
+    char *deviceId1 = getOctetString(ctx, 0x0002, 10);
+    char *activeCoreFirmwareId = getOctetString(ctx, 0x0004, 5);
+    char *activeAppFirmwareId = getOctetString(ctx, 0x0005, 5);
+    char *activeComFirmwareId = getOctetString(ctx, 0x0006, 5);
 
     localRc += getDoubleFromUInt32(ctx, 0x0012, -3, &currentApparentPowerThreshold);
 
@@ -161,13 +157,14 @@ void runHourly()
     free(activityCalendarActiveName);
 }
 
-char* getOctetString(modbus_t* ctx, uint16_t registerAddress, uint8_t nb)
+char *getOctetString(modbus_t *ctx, uint16_t registerAddress, uint8_t nb)
 {
-    char* string = malloc(nb + 1 * sizeof(char));
+    char *string = malloc(nb + 1 * sizeof(char));
     string[nb] = 0; // set string terminator
     int rc = modbus_read_input_registers(ctx, registerAddress, 1, nb, string);
 
-    if (rc != 1) {
+    if (rc != 1)
+    {
         string[0] = '\0';
     }
 
@@ -176,15 +173,18 @@ char* getOctetString(modbus_t* ctx, uint16_t registerAddress, uint8_t nb)
 
 double scaleInt(int num, int scaler)
 {
-    if (scaler == 0) {
+    if (scaler == 0)
+    {
         // No effect
         return num;
-    } else {
+    }
+    else
+    {
         return num * pow(10, scaler);
     }
 }
 
-int getDoubleFromUInt16(modbus_t* ctx, uint16_t registerAddress, signed char scaler, double* res)
+int getDoubleFromUInt16(modbus_t *ctx, uint16_t registerAddress, signed char scaler, double *res)
 {
     uint16_t buffer;
     int rc = modbus_read_input_registers(ctx, registerAddress, 1, 2, &buffer);
@@ -192,7 +192,7 @@ int getDoubleFromUInt16(modbus_t* ctx, uint16_t registerAddress, signed char sca
     return rc;
 }
 
-int getDoubleFromUInt32(modbus_t* ctx, uint16_t registerAddress, signed char scaler, double* res)
+int getDoubleFromUInt32(modbus_t *ctx, uint16_t registerAddress, signed char scaler, double *res)
 {
     uint32_t buffer;
     int rc = modbus_read_input_registers(ctx, registerAddress, 1, 4, &buffer);
@@ -200,65 +200,69 @@ int getDoubleFromUInt32(modbus_t* ctx, uint16_t registerAddress, signed char sca
     return rc;
 }
 
-emi_clock_t* getTime(modbus_t* ctx)
+emi_clock_t *getTime(modbus_t *ctx)
 {
-    emi_clock_t* emiClock = malloc(1 * sizeof(emi_clock_t));
+    emi_clock_t *emiClock = malloc(1 * sizeof(emi_clock_t));
     int rc = modbus_read_input_registers(ctx, 0x0001, 1, sizeof(emi_clock_t), emiClock);
-    if (rc != 0) {
+    if (rc != 0)
+    {
     }
     emiClock->year = __bswap_16(emiClock->year);
     emiClock->deviation = __bswap_16(emiClock->deviation);
     return emiClock;
 }
 
-int _MQTTClient_publishInt(MQTTClient handle, const char* topicName, int n)
+int _MQTTClient_publishInt(MQTTClient handle, const char *topicName, int n)
 {
-    char* str = malloc(32);
+    char *str = malloc(32);
     sprintf(str, "%d", n);
     int rc = MQTTClient_publish(handle, topicName, strlen(str), str, 1, 0, NULL);
     free(str);
     return rc;
 }
 
-int _MQTTClient_publishDouble(MQTTClient handle, const char* topicName, double n, uint8_t decimals)
+int _MQTTClient_publishDouble(MQTTClient handle, const char *topicName, double n, uint8_t decimals)
 {
-    char* str = malloc(32);
+    char *str = malloc(32);
     sprintf(str, "%.*f", decimals, n);
     int rc = MQTTClient_publish(handle, topicName, strlen(str), str, 1, 0, NULL);
     free(str);
     return rc;
 }
 
-int _MQTTClient_publishString(MQTTClient handle, const char* topicName, char* str)
+int _MQTTClient_publishString(MQTTClient handle, const char *topicName, char *str)
 {
     return MQTTClient_publish(handle, topicName, strlen(str), str, 1, 0, NULL);
-}
-
-char admissibleNewValue(double oldValue, double newValue, float admissibleVariance)
-{
-    double biggest, smallest;
-    if (oldValue > newValue) {
-        biggest = oldValue;
-        smallest = newValue;
-    } else {
-        biggest = newValue;
-        smallest = oldValue;
-    }
-
-    double diff = biggest - smallest;
-
-    if ((fabs(diff / oldValue) * 100) > admissibleVariance) {
-        return FALSE;
-    }
-
-    return TRUE;
 }
 
 unsigned char getCurrentHour()
 {
     time_t rawtime;
-    struct tm* timeinfo;
+    struct tm *timeinfo;
     time(&rawtime);
     timeinfo = localtime(&rawtime);
     return timeinfo->tm_hour;
+}
+
+void mqtt_connect(MQTTClient client, char **argv)
+{
+
+    MQTTClient_connectOptions conn_opts = MQTTClient_connectOptions_initializer;
+    conn_opts.username = argv[2];
+    conn_opts.password = argv[3];
+    
+    do
+    {
+        mqttrc = MQTTClient_connect(client, &conn_opts);
+        printf("mqtt connect returned %i, %s\n", mqttrc, MQTTClient_strerror(mqttrc));
+        if (mqttrc != MQTTCLIENT_SUCCESS)
+            sleep(10);
+    } while (mqttrc != MQTTCLIENT_SUCCESS);
+    printf("Connected to mqtt\n");
+}
+
+void mqtt_disconnect(MQTTClient client)
+{
+    MQTTClient_disconnect(client, 1000);
+    printf("Disconnected from mqtt\n");
 }

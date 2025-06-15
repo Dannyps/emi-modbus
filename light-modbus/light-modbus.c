@@ -11,34 +11,40 @@
 
 #define MSG_LENGTH_UNDEFINED -1
 
-void _error_print(modbus_t* ctx, const char* context)
+void _error_print(modbus_t *ctx, const char *context)
 {
-    if (ctx->debug) {
+    if (ctx->debug)
+    {
         fprintf(stderr, "ERROR %s", modbus_strerror(errno));
-        if (context != NULL) {
+        if (context != NULL)
+        {
             fprintf(stderr, ": %s\n", context);
-        } else {
+        }
+        else
+        {
             fprintf(stderr, "\n");
         }
     }
 }
 
-static void _sleep_response_timeout(modbus_t* ctx)
+static void _sleep_response_timeout(modbus_t *ctx)
 {
     /* Response timeout is always positive */
     /* usleep source code */
     struct timespec request, remaining;
     request.tv_sec = ctx->response_timeout.tv_sec;
     request.tv_nsec = ((long int)ctx->response_timeout.tv_usec) * 1000;
-    while (nanosleep(&request, &remaining) == -1 && errno == EINTR) {
+    while (nanosleep(&request, &remaining) == -1 && errno == EINTR)
+    {
         request = remaining;
     }
 }
 
 /* Get the timeout interval used to wait for a response */
-int modbus_get_response_timeout(modbus_t* ctx, uint32_t* to_sec, uint32_t* to_usec)
+int modbus_get_response_timeout(modbus_t *ctx, uint32_t *to_sec, uint32_t *to_usec)
 {
-    if (ctx == NULL) {
+    if (ctx == NULL)
+    {
         errno = EINVAL;
         return -1;
     }
@@ -48,9 +54,10 @@ int modbus_get_response_timeout(modbus_t* ctx, uint32_t* to_sec, uint32_t* to_us
     return 0;
 }
 
-int modbus_set_response_timeout(modbus_t* ctx, uint32_t to_sec, uint32_t to_usec)
+int modbus_set_response_timeout(modbus_t *ctx, uint32_t to_sec, uint32_t to_usec)
 {
-    if (ctx == NULL || (to_sec == 0 && to_usec == 0) || to_usec > 999999) {
+    if (ctx == NULL || (to_sec == 0 && to_usec == 0) || to_usec > 999999)
+    {
         errno = EINVAL;
         return -1;
     }
@@ -61,22 +68,26 @@ int modbus_set_response_timeout(modbus_t* ctx, uint32_t to_sec, uint32_t to_usec
 }
 
 /* Computes the length of the expected response */
-static unsigned int compute_response_length_from_request(modbus_t* ctx, uint8_t* req, uint8_t size)
+static unsigned int compute_response_length_from_request(modbus_t *ctx, uint8_t *req, uint8_t size)
 {
     int length;
     const int offset = ctx->backend->header_length;
 
-    if (size % 2 == 1) {
+    if (size % 2 == 1)
+    {
         size++;
     }
 
-    switch (req[offset]) {
+    switch (req[offset])
+    {
     case MODBUS_FC_READ_COILS:
-    case MODBUS_FC_READ_DISCRETE_INPUTS: {
+    case MODBUS_FC_READ_DISCRETE_INPUTS:
+    {
         /* Header + nb values (code from write_bits) */
         int nb = (req[offset + 3] << 8) | req[offset + 4];
         length = 2 + (nb / 8) + ((nb % 8) ? 1 : 0);
-    } break;
+    }
+    break;
     case MODBUS_FC_WRITE_AND_READ_REGISTERS:
     case MODBUS_FC_READ_HOLDING_REGISTERS:
     case MODBUS_FC_READ_INPUT_REGISTERS:
@@ -105,22 +116,35 @@ static uint8_t compute_meta_length_after_function(int function, msg_type_t msg_t
 {
     int length;
 
-    if (msg_type == MSG_INDICATION) {
-        if (function <= MODBUS_FC_WRITE_SINGLE_REGISTER) {
+    if (msg_type == MSG_INDICATION)
+    {
+        if (function <= MODBUS_FC_WRITE_SINGLE_REGISTER)
+        {
             length = 4;
-        } else if (function == MODBUS_FC_WRITE_MULTIPLE_COILS || function == MODBUS_FC_WRITE_MULTIPLE_REGISTERS) {
+        }
+        else if (function == MODBUS_FC_WRITE_MULTIPLE_COILS || function == MODBUS_FC_WRITE_MULTIPLE_REGISTERS)
+        {
             length = 5;
-        } else if (function == MODBUS_FC_MASK_WRITE_REGISTER) {
+        }
+        else if (function == MODBUS_FC_MASK_WRITE_REGISTER)
+        {
             length = 6;
-        } else if (function == MODBUS_FC_WRITE_AND_READ_REGISTERS) {
+        }
+        else if (function == MODBUS_FC_WRITE_AND_READ_REGISTERS)
+        {
             length = 9;
-        } else {
+        }
+        else
+        {
             /* MODBUS_FC_READ_EXCEPTION_STATUS, MODBUS_FC_REPORT_SLAVE_ID */
             length = 0;
         }
-    } else {
+    }
+    else
+    {
         /* MSG_CONFIRMATION */
-        switch (function) {
+        switch (function)
+        {
         case MODBUS_FC_WRITE_SINGLE_COIL:
         case MODBUS_FC_WRITE_SINGLE_REGISTER:
         case MODBUS_FC_WRITE_MULTIPLE_COILS:
@@ -139,13 +163,15 @@ static uint8_t compute_meta_length_after_function(int function, msg_type_t msg_t
 }
 
 static int
-compute_data_length_after_meta(modbus_t* ctx, uint8_t* msg, msg_type_t msg_type)
+compute_data_length_after_meta(modbus_t *ctx, uint8_t *msg, msg_type_t msg_type)
 {
     int function = msg[ctx->backend->header_length];
     int length;
 
-    if (msg_type == MSG_INDICATION) {
-        switch (function) {
+    if (msg_type == MSG_INDICATION)
+    {
+        switch (function)
+        {
         case MODBUS_FC_WRITE_MULTIPLE_COILS:
         case MODBUS_FC_WRITE_MULTIPLE_REGISTERS:
             length = msg[ctx->backend->header_length + 5];
@@ -156,11 +182,16 @@ compute_data_length_after_meta(modbus_t* ctx, uint8_t* msg, msg_type_t msg_type)
         default:
             length = 0;
         }
-    } else {
+    }
+    else
+    {
         /* MSG_CONFIRMATION */
-        if (function <= MODBUS_FC_READ_INPUT_REGISTERS || function == MODBUS_FC_REPORT_SLAVE_ID || function == MODBUS_FC_WRITE_AND_READ_REGISTERS) {
+        if (function <= MODBUS_FC_READ_INPUT_REGISTERS || function == MODBUS_FC_REPORT_SLAVE_ID || function == MODBUS_FC_WRITE_AND_READ_REGISTERS)
+        {
             length = msg[ctx->backend->header_length + 1];
-        } else {
+        }
+        else
+        {
             length = 0;
         }
     }
@@ -170,17 +201,20 @@ compute_data_length_after_meta(modbus_t* ctx, uint8_t* msg, msg_type_t msg_type)
     return length;
 }
 
-static int check_confirmation(modbus_t* ctx, uint8_t* req, uint8_t* rsp, uint8_t size, int rsp_length)
+static int check_confirmation(modbus_t *ctx, uint8_t *req, uint8_t *rsp, uint8_t size, int rsp_length)
 {
     int rc;
     int rsp_length_computed;
     const unsigned int offset = ctx->backend->header_length;
     const int function = rsp[offset];
 
-    if (ctx->backend->pre_check_confirmation) {
+    if (ctx->backend->pre_check_confirmation)
+    {
         rc = ctx->backend->pre_check_confirmation(ctx, req, rsp, rsp_length);
-        if (rc == -1) {
-            if (ctx->error_recovery & MODBUS_ERROR_RECOVERY_PROTOCOL) {
+        if (rc == -1)
+        {
+            if (ctx->error_recovery & MODBUS_ERROR_RECOVERY_PROTOCOL)
+            {
                 _sleep_response_timeout(ctx);
                 modbus_flush(ctx);
             }
@@ -191,19 +225,26 @@ static int check_confirmation(modbus_t* ctx, uint8_t* req, uint8_t* rsp, uint8_t
     rsp_length_computed = compute_response_length_from_request(ctx, req, size);
 
     /* Exception code */
-    if (function >= 0x80) {
-        if (rsp_length == (int)(offset + 2 + ctx->backend->checksum_length) && req[offset] == (rsp[offset] - 0x80)) {
+    if (function >= 0x80)
+    {
+        if (rsp_length == (int)(offset + 2 + ctx->backend->checksum_length) && req[offset] == (rsp[offset] - 0x80))
+        {
             /* Valid exception code received */
 
             int exception_code = rsp[offset + 1];
-            if (exception_code < MODBUS_EXCEPTION_MAX) {
+            if (exception_code < MODBUS_EXCEPTION_MAX)
+            {
                 errno = MODBUS_ENOBASE + exception_code;
-            } else {
+            }
+            else
+            {
                 errno = EMBBADEXC;
             }
             _error_print(ctx, NULL);
             return -1;
-        } else {
+        }
+        else
+        {
             errno = EMBBADEXC;
             _error_print(ctx, NULL);
             return -1;
@@ -211,22 +252,26 @@ static int check_confirmation(modbus_t* ctx, uint8_t* req, uint8_t* rsp, uint8_t
     }
 
     /* Check length */
-    if ((rsp_length == rsp_length_computed || rsp_length_computed == MSG_LENGTH_UNDEFINED) && function < 0x80) {
+    if ((rsp_length == rsp_length_computed || rsp_length_computed == MSG_LENGTH_UNDEFINED) && function < 0x80)
+    {
         int req_nb_value;
         int rsp_nb_value;
         int resp_addr_ok = TRUE;
         int resp_data_ok = TRUE;
 
         /* Check function code */
-        if (function != req[offset]) {
-            if (ctx->debug) {
+        if (function != req[offset])
+        {
+            if (ctx->debug)
+            {
                 fprintf(
                     stderr,
                     "Received function not corresponding to the request (0x%X != 0x%X)\n",
                     function,
                     req[offset]);
             }
-            if (ctx->error_recovery & MODBUS_ERROR_RECOVERY_PROTOCOL) {
+            if (ctx->error_recovery & MODBUS_ERROR_RECOVERY_PROTOCOL)
+            {
                 _sleep_response_timeout(ctx);
                 modbus_flush(ctx);
             }
@@ -237,7 +282,8 @@ static int check_confirmation(modbus_t* ctx, uint8_t* req, uint8_t* rsp, uint8_t
         uint8_t paddedSize = (size % 2 == 1) ? size + 1 : size;
 
         /* Check the number of values is corresponding to the request */
-        switch (function) {
+        switch (function)
+        {
         case MODBUS_FC_READ_COILS:
         case MODBUS_FC_READ_DISCRETE_INPUTS:
             /* Read functions, 8 values in a byte (nb
@@ -257,7 +303,8 @@ static int check_confirmation(modbus_t* ctx, uint8_t* req, uint8_t* rsp, uint8_t
         case MODBUS_FC_WRITE_MULTIPLE_COILS:
         case MODBUS_FC_WRITE_MULTIPLE_REGISTERS:
             /* address in request and response must be equal */
-            if ((req[offset + 1] != rsp[offset + 1]) || (req[offset + 2] != rsp[offset + 2])) {
+            if ((req[offset + 1] != rsp[offset + 1]) || (req[offset + 2] != rsp[offset + 2]))
+            {
                 resp_addr_ok = FALSE;
             }
             /* N Write functions */
@@ -271,11 +318,13 @@ static int check_confirmation(modbus_t* ctx, uint8_t* req, uint8_t* rsp, uint8_t
         case MODBUS_FC_WRITE_SINGLE_COIL:
         case MODBUS_FC_WRITE_SINGLE_REGISTER:
             /* address in request and response must be equal */
-            if ((req[offset + 1] != rsp[offset + 1]) || (req[offset + 2] != rsp[offset + 2])) {
+            if ((req[offset + 1] != rsp[offset + 1]) || (req[offset + 2] != rsp[offset + 2]))
+            {
                 resp_addr_ok = FALSE;
             }
             /* data in request and response must be equal */
-            if ((req[offset + 3] != rsp[offset + 3]) || (req[offset + 4] != rsp[offset + 4])) {
+            if ((req[offset + 3] != rsp[offset + 3]) || (req[offset + 4] != rsp[offset + 4]))
+            {
                 resp_data_ok = FALSE;
             }
             /* 1 Write functions & others */
@@ -287,17 +336,22 @@ static int check_confirmation(modbus_t* ctx, uint8_t* req, uint8_t* rsp, uint8_t
             break;
         }
 
-        if ((req_nb_value == rsp_nb_value) && (resp_addr_ok == TRUE) && (resp_data_ok == TRUE)) {
+        if ((req_nb_value == rsp_nb_value) && (resp_addr_ok == TRUE) && (resp_data_ok == TRUE))
+        {
             rc = rsp_nb_value;
-        } else {
-            if (ctx->debug) {
+        }
+        else
+        {
+            if (ctx->debug)
+            {
                 fprintf(stderr,
-                    "Received data not corresponding to the request (%d != %d)\n",
-                    rsp_nb_value,
-                    req_nb_value);
+                        "Received data not corresponding to the request (%d != %d)\n",
+                        rsp_nb_value,
+                        req_nb_value);
             }
 
-            if (ctx->error_recovery & MODBUS_ERROR_RECOVERY_PROTOCOL) {
+            if (ctx->error_recovery & MODBUS_ERROR_RECOVERY_PROTOCOL)
+            {
                 _sleep_response_timeout(ctx);
                 modbus_flush(ctx);
             }
@@ -305,15 +359,19 @@ static int check_confirmation(modbus_t* ctx, uint8_t* req, uint8_t* rsp, uint8_t
             errno = EMBBADDATA;
             rc = -1;
         }
-    } else {
-        if (ctx->debug) {
+    }
+    else
+    {
+        if (ctx->debug)
+        {
             fprintf(
                 stderr,
                 "Message length not corresponding to the computed length (%d != %d)\n",
                 rsp_length,
                 rsp_length_computed);
         }
-        if (ctx->error_recovery & MODBUS_ERROR_RECOVERY_PROTOCOL) {
+        if (ctx->error_recovery & MODBUS_ERROR_RECOVERY_PROTOCOL)
+        {
             _sleep_response_timeout(ctx);
             modbus_flush(ctx);
         }
@@ -324,26 +382,32 @@ static int check_confirmation(modbus_t* ctx, uint8_t* req, uint8_t* rsp, uint8_t
     return rc;
 }
 
-int _modbus_receive_msg(modbus_t* ctx, uint8_t* msg, msg_type_t msg_type)
+int _modbus_receive_msg(modbus_t *ctx, uint8_t *msg, msg_type_t msg_type)
 {
     int rc;
     fd_set rset;
     struct timeval tv;
-    struct timeval* p_tv;
+    struct timeval *p_tv;
     unsigned int length_to_read;
     int msg_length = 0;
     _step_t step;
 
-    if (ctx->debug) {
-        if (msg_type == MSG_INDICATION) {
+    if (ctx->debug)
+    {
+        if (msg_type == MSG_INDICATION)
+        {
             printf("Waiting for an indication...\n");
-        } else {
+        }
+        else
+        {
             printf("Waiting for a confirmation...\n");
         }
     }
 
-    if (!ctx->backend->is_connected(ctx)) {
-        if (ctx->debug) {
+    if (!ctx->backend->is_connected(ctx))
+    {
+        if (ctx->debug)
+        {
             fprintf(stderr, "ERROR The connection is not established.\n");
         }
         return -1;
@@ -359,35 +423,47 @@ int _modbus_receive_msg(modbus_t* ctx, uint8_t* msg, msg_type_t msg_type)
     step = _STEP_FUNCTION;
     length_to_read = ctx->backend->header_length + 1;
 
-    if (msg_type == MSG_INDICATION) {
+    if (msg_type == MSG_INDICATION)
+    {
         /* Wait for a message, we don't know when the message will be
          * received */
-        if (ctx->indication_timeout.tv_sec == 0 && ctx->indication_timeout.tv_usec == 0) {
+        if (ctx->indication_timeout.tv_sec == 0 && ctx->indication_timeout.tv_usec == 0)
+        {
             /* By default, the indication timeout isn't set */
             p_tv = NULL;
-        } else {
+        }
+        else
+        {
             /* Wait for an indication (name of a received request by a server, see schema)
              */
             tv.tv_sec = ctx->indication_timeout.tv_sec;
             tv.tv_usec = ctx->indication_timeout.tv_usec;
             p_tv = &tv;
         }
-    } else {
+    }
+    else
+    {
         tv.tv_sec = ctx->response_timeout.tv_sec;
         tv.tv_usec = ctx->response_timeout.tv_usec;
         p_tv = &tv;
     }
 
-    while (length_to_read != 0) {
+    while (length_to_read != 0)
+    {
         rc = ctx->backend->select(ctx, &rset, p_tv, length_to_read);
-        if (rc == -1) {
+        if (rc == -1)
+        {
             _error_print(ctx, "select");
-            if (ctx->error_recovery & MODBUS_ERROR_RECOVERY_LINK) {
+            if (ctx->error_recovery & MODBUS_ERROR_RECOVERY_LINK)
+            {
                 int saved_errno = errno;
-                if (errno == ETIMEDOUT) {
+                if (errno == ETIMEDOUT)
+                {
                     _sleep_response_timeout(ctx);
                     modbus_flush(ctx);
-                } else if (errno == EBADF) {
+                }
+                else if (errno == EBADF)
+                {
                     modbus_close(ctx);
                     modbus_connect(ctx);
                 }
@@ -397,14 +473,17 @@ int _modbus_receive_msg(modbus_t* ctx, uint8_t* msg, msg_type_t msg_type)
         }
 
         rc = ctx->backend->recv(ctx, msg + msg_length, length_to_read);
-        if (rc == 0) {
+        if (rc == 0)
+        {
             errno = ECONNRESET;
             rc = -1;
         }
 
-        if (rc == -1) {
+        if (rc == -1)
+        {
             _error_print(ctx, "read");
-            if ((ctx->error_recovery & MODBUS_ERROR_RECOVERY_LINK) && (ctx->backend->backend_type == _MODBUS_BACKEND_TYPE_TCP) && (errno == ECONNRESET || errno == ECONNREFUSED || errno == EBADF)) {
+            if ((ctx->error_recovery & MODBUS_ERROR_RECOVERY_LINK) && (ctx->backend->backend_type == _MODBUS_BACKEND_TYPE_TCP) && (errno == ECONNRESET || errno == ECONNREFUSED || errno == EBADF))
+            {
                 int saved_errno = errno;
                 modbus_close(ctx);
                 modbus_connect(ctx);
@@ -415,7 +494,8 @@ int _modbus_receive_msg(modbus_t* ctx, uint8_t* msg, msg_type_t msg_type)
         }
 
         /* Display the hex code of each character received */
-        if (ctx->debug) {
+        if (ctx->debug)
+        {
             int i;
             for (i = 0; i < rc; i++)
                 printf("<%.2X>", msg[msg_length + i]);
@@ -426,19 +506,23 @@ int _modbus_receive_msg(modbus_t* ctx, uint8_t* msg, msg_type_t msg_type)
         /* Computes remaining bytes */
         length_to_read -= rc;
 
-        if (length_to_read == 0) {
-            switch (step) {
+        if (length_to_read == 0)
+        {
+            switch (step)
+            {
             case _STEP_FUNCTION:
                 /* Function code position */
                 length_to_read = compute_meta_length_after_function(
                     msg[ctx->backend->header_length], msg_type);
-                if (length_to_read != 0) {
+                if (length_to_read != 0)
+                {
                     step = _STEP_META;
                     break;
                 } /* else switches straight to the next step */
             case _STEP_META:
                 length_to_read = compute_data_length_after_meta(ctx, msg, msg_type);
-                if ((msg_length + length_to_read) > ctx->backend->max_adu_length) {
+                if ((msg_length + length_to_read) > ctx->backend->max_adu_length)
+                {
                     errno = EMBBADDATA;
                     _error_print(ctx, "too many data");
                     return -1;
@@ -450,7 +534,8 @@ int _modbus_receive_msg(modbus_t* ctx, uint8_t* msg, msg_type_t msg_type)
             }
         }
 
-        if (length_to_read > 0 && (ctx->byte_timeout.tv_sec > 0 || ctx->byte_timeout.tv_usec > 0)) {
+        if (length_to_read > 0 && (ctx->byte_timeout.tv_sec > 0 || ctx->byte_timeout.tv_usec > 0))
+        {
             /* If there is no character in the buffer, the allowed timeout
                interval between two consecutive bytes is defined by
                byte_timeout */
@@ -469,14 +554,15 @@ int _modbus_receive_msg(modbus_t* ctx, uint8_t* msg, msg_type_t msg_type)
 }
 
 /* Sends a request/response */
-static int send_msg(modbus_t* ctx, uint8_t* msg, int msg_length)
+static int send_msg(modbus_t *ctx, uint8_t *msg, int msg_length)
 {
     int rc;
     int i;
 
     msg_length = ctx->backend->send_msg_pre(msg, msg_length);
 
-    if (ctx->debug) {
+    if (ctx->debug)
+    {
         for (i = 0; i < msg_length; i++)
             printf("[%.2X]", msg[i]);
         printf("\n");
@@ -484,18 +570,24 @@ static int send_msg(modbus_t* ctx, uint8_t* msg, int msg_length)
 
     /* In recovery mode, the write command will be issued until to be
        successful! Disabled by default. */
-    do {
+    do
+    {
         rc = ctx->backend->send(ctx, msg, msg_length);
-        if (rc == -1) {
+        if (rc == -1)
+        {
             _error_print(ctx, NULL);
-            if (ctx->error_recovery & MODBUS_ERROR_RECOVERY_LINK) {
+            if (ctx->error_recovery & MODBUS_ERROR_RECOVERY_LINK)
+            {
                 int saved_errno = errno;
 
-                if ((errno == EBADF || errno == ECONNRESET || errno == EPIPE)) {
+                if ((errno == EBADF || errno == ECONNRESET || errno == EPIPE))
+                {
                     modbus_close(ctx);
                     _sleep_response_timeout(ctx);
                     modbus_connect(ctx);
-                } else {
+                }
+                else
+                {
                     _sleep_response_timeout(ctx);
                     modbus_flush(ctx);
                 }
@@ -504,7 +596,8 @@ static int send_msg(modbus_t* ctx, uint8_t* msg, int msg_length)
         }
     } while ((ctx->error_recovery & MODBUS_ERROR_RECOVERY_LINK) && rc == -1);
 
-    if (rc > 0 && rc != msg_length) {
+    if (rc > 0 && rc != msg_length)
+    {
         errno = EMBBADDATA;
         return -1;
     }
@@ -514,7 +607,7 @@ static int send_msg(modbus_t* ctx, uint8_t* msg, int msg_length)
 
 /* Reads the data from a remote device and put that data into an array */
 static int
-read_registers(modbus_t* ctx, int function, int addr, int nb, u_int8_t size, void* dest)
+read_registers(modbus_t *ctx, int function, int addr, int nb, u_int8_t size, void *dest)
 {
     int rc;
     int req_length;
@@ -524,7 +617,8 @@ read_registers(modbus_t* ctx, int function, int addr, int nb, u_int8_t size, voi
     req_length = ctx->backend->build_request_basis(ctx, function, addr, nb, size, req);
 
     rc = send_msg(ctx, req, req_length);
-    if (rc > 0) {
+    if (rc > 0)
+    {
         unsigned int offset;
         int i;
 
@@ -539,17 +633,19 @@ read_registers(modbus_t* ctx, int function, int addr, int nb, u_int8_t size, voi
         offset = ctx->backend->header_length;
         uint8_t paddedSize = (size % 2 == 1) ? size + 1 : size;
 
-        for (i = 0; i < rc; i++) {
-            memcpy(dest + i, rsp + offset + 2 + i * paddedSize, size);
+        for (i = 0; i < rc; i++)
+        {
+            memcpy((char *)dest + i, rsp + offset + 2 + i * paddedSize, size);
         }
     }
 
     return rc;
 }
 
-const char* modbus_strerror(int errnum)
+const char *modbus_strerror(int errnum)
 {
-    switch (errnum) {
+    switch (errnum)
+    {
     case EMBXILFUN:
         return "Illegal function";
     case EMBXILADD:
@@ -586,9 +682,10 @@ const char* modbus_strerror(int errnum)
 }
 
 /* Define the slave number */
-int modbus_set_slave(modbus_t* ctx, int slave)
+int modbus_set_slave(modbus_t *ctx, int slave)
 {
-    if (ctx == NULL) {
+    if (ctx == NULL)
+    {
         errno = EINVAL;
         return -1;
     }
@@ -596,9 +693,10 @@ int modbus_set_slave(modbus_t* ctx, int slave)
     return ctx->backend->set_slave(ctx, slave);
 }
 
-int modbus_connect(modbus_t* ctx)
+int modbus_connect(modbus_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == NULL)
+    {
         errno = EINVAL;
         return -1;
     }
@@ -606,7 +704,7 @@ int modbus_connect(modbus_t* ctx)
     return ctx->backend->connect(ctx);
 }
 
-void modbus_close(modbus_t* ctx)
+void modbus_close(modbus_t *ctx)
 {
     if (ctx == NULL)
         return;
@@ -614,7 +712,7 @@ void modbus_close(modbus_t* ctx)
     ctx->backend->close(ctx);
 }
 
-void modbus_free(modbus_t* ctx)
+void modbus_free(modbus_t *ctx)
 {
     if (ctx == NULL)
         return;
@@ -622,9 +720,10 @@ void modbus_free(modbus_t* ctx)
     ctx->backend->free(ctx);
 }
 
-int modbus_set_debug(modbus_t* ctx, int flag)
+int modbus_set_debug(modbus_t *ctx, int flag)
 {
-    if (ctx == NULL) {
+    if (ctx == NULL)
+    {
         errno = EINVAL;
         return -1;
     }
@@ -633,9 +732,10 @@ int modbus_set_debug(modbus_t* ctx, int flag)
     return 0;
 }
 
-int modbus_set_error_recovery(modbus_t* ctx, modbus_error_recovery_mode error_recovery)
+int modbus_set_error_recovery(modbus_t *ctx, modbus_error_recovery_mode error_recovery)
 {
-    if (ctx == NULL) {
+    if (ctx == NULL)
+    {
         errno = EINVAL;
         return -1;
     }
@@ -645,17 +745,19 @@ int modbus_set_error_recovery(modbus_t* ctx, modbus_error_recovery_mode error_re
     return 0;
 }
 
-int modbus_flush(modbus_t* ctx)
+int modbus_flush(modbus_t *ctx)
 {
     int rc;
 
-    if (ctx == NULL) {
+    if (ctx == NULL)
+    {
         errno = EINVAL;
         return -1;
     }
 
     rc = ctx->backend->flush(ctx);
-    if (rc != -1 && ctx->debug) {
+    if (rc != -1 && ctx->debug)
+    {
         /* Not all backends are able to return the number of bytes flushed */
         printf("Bytes flushed (%d)\n", rc);
     }
@@ -663,11 +765,12 @@ int modbus_flush(modbus_t* ctx)
 }
 
 int modbus_read_input_registers(
-    modbus_t* ctx, int addr, int nb, __uint8_t size, void* dest)
+    modbus_t *ctx, int addr, int nb, __uint8_t size, void *dest)
 {
     int status;
 
-    if (ctx == NULL) {
+    if (ctx == NULL)
+    {
         errno = EINVAL;
         return -1;
     }
